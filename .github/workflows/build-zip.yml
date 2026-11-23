@@ -1,0 +1,45 @@
+name: Build APK from zip
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack the newest uploaded zip over the repo
+        run: |
+          z=$(ls PlutoSaturn-full-*.zip 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$z" ]; then echo "Using $z"; unzip -oq "$z" -x ".github/*"; else echo "No zip found, building the repo as it is"; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build debug APK
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+      - name: Show compile errors
+        if: failure()
+        run: |
+          {
+            echo '### Compile errors'
+            echo '```'
+            grep -E "^e: |What went wrong" -A3 build.log | head -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PlutoSaturn-from-zip-apk
+          path: app/build/outputs/apk/debug/*.apk
